@@ -32,22 +32,27 @@ func Replay(cmd *cobra.Command, args []string) error {
 	if os.Getenv("_EXPERIMENTAL_DAGGER_INTERACTIVE_TUI") != "" {
 		return replayInteractiveTUI(cmd.Context(), args[0])
 	} else {
-		return replayInternalTUI(args[0])
+		return replayInternalTUI(cmd.Context(), args[0])
 	}
 }
 
-func replayInternalTUI(journal string) error {
+func replayInternalTUI(ctx context.Context, journal string) error {
 	tape := progrock.NewTape()
 	tape.ShowAllOutput(true)
-	defer tape.Close()
+	tape.ShowInternal(true)
 
-	iterateOverEvents(journal, func(event *progrock.StatusUpdate) error {
-		return tape.WriteStatus(event)
+	tape.MessageLevel(progrock.MessageLevel_DEBUG)
+	progrock.DefaultUI().Run(ctx, tape, func(ctx context.Context, ui progrock.UIClient) error {
+		recorder := progrock.NewRecorder(tape)
+		iterateOverEvents(journal, func(event *progrock.StatusUpdate) error {
+			return recorder.Record(event)
+		})
+
+		recorder.Close()
+		recorder.Complete()
+
+		return nil
 	})
-	err := tape.Render(os.Stdout, progrock.DefaultUI())
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
